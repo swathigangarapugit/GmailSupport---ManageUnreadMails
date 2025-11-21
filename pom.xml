@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.google</groupId>
+    <artifactId>gmail-life-support</artifactId>
+    <version>1.0</version>
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+        <!-- Google Agent Development Kit -->
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-agent-development-kit</artifactId>
+            <version>0.7.0</version>
+        </dependency>
+
+        <!-- Gemini -->
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-aiplatform</artifactId>
+y
+            <version>2.14.0</version>
+        </dependency>
+
+        <!-- Gmail API -->
+        <dependency>
+            <groupId>com.google.apis</groupId>
+            <artifactId>google-api-services-gmail</artifactId>
+            <version>v1-rev20240908-2.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.auth</groupId>
+            <artifactId>google-auth-library-oauth2-http</artifactId>
+            <version>1.23.0</version>
+        </dependency>
+
+        <!-- PDF Report -->
+        <dependency>
+            <groupId>com.itextpdf</groupId>
+            <artifactId>itext7-core</artifactId>
+            <version>8.0.5</version>
+            <type>pom</type>
+        </dependency>
+
+        <!-- OpenTelemetry -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+            <version>1.42.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk</artifactId>
+            <version>1.42.0</version>
+        </dependency>
+    </dependencies>
+</project>
