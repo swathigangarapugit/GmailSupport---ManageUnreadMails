@@ -55,7 +55,7 @@ public class GmailLifeSupportApp {
 
         // ---- GEMINI (still uses your project ID) ----
         var model = VertexAiGeminiChatModel.builder()
-                .project("YOUR_PROJECT_ID_HERE")   // ← put your real project ID
+                .project("project-88985c67-16dd-48e2-908")   // ← put your real project ID
                 .location("us-central1")
                 .modelName("gemini-1.5-pro-002")
                 .temperature(0.3)
