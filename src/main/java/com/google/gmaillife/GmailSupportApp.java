@@ -1,5 +1,10 @@
 package com.google.gmaillife;
 
+import com.google.adk.agents.LlmAgent;
+import com.google.adk.agents.SequentialAgent;
+import com.google.adk.agents.BaseAgent;
+import com.google.adk.tools.FunctionTool;
+import com.google.adk.web.AdkWebServer;
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
 import com.google.api.client.extensions.jetty.auth.oauth2.LocalServerReceiver;
@@ -7,83 +12,110 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
 import com.google.api.client.googleapis.auth.oauth2.GoogleClientSecrets;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.javanet.NetHttpTransport;
-import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.store.FileDataStoreFactory;
-import dev.langchain4j.model.vertexai.gemini.VertexAiGeminiChatModel;  // Fixed import
-import dev.langchain4j.service.AiServices;
-import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.memory.chat.MessageWindowChatMemory;
-import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;  // Fixed import
-
-import java.io.File;
+import com.google.api.services.gmail.Gmail;
+import com.google.api.services.gmail.GmailScopes;
 import java.io.InputStreamReader;
+import java.util.Collections;
 import java.util.List;
-import java.util.Scanner;
+import java.util.Map;
 
-public class GmailLifeSupportApp {
+public class GmailSupportApp {
 
-    private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
-    private static final List<String> SCOPES = List.of(
-            "https://www.googleapis.com/auth/gmail.readonly",  // Read-only for safety
-            "https://www.googleapis.com/auth/gmail.labels"
-    );
-    private static final String TOKENS_DIRECTORY_PATH = "tokens";
-
-    interface LifeSupport {
-        String help(String userMessage);
-    }
-
-    static class Tools {
-        @Tool("Start full Gmail rescue – clean, unsubscribe, summarize life")
-        String rescueGmail(String dummy) {
-            return MailArchaeologist.scan() + "\n" +
-                   UnsubscriberBot.massUnsubscribe() + "\n" +
-                   LifeStoryAgent.generateLifeReport() + "\n" +
-                   FilterGenie.createSmartFilters() +
-                   "\n\nGmail OAuth + Gemini fully authenticated!";
-        }
-    }
+    private static final String APPLICATION_NAME = "Gmail Life Support";
+    private static final String CREDENTIALS_FILE_PATH = "/credentials.json";
 
     public static void main(String[] args) throws Exception {
-        AutoConfiguredOpenTelemetrySdk.initialize();  // Observability – now compiles
-
-        // ---- USER OAUTH (opens browser once) ----
         final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
         Credential credential = getCredentials(HTTP_TRANSPORT);
-        System.out.println("Gmail access granted for: " + credential.getAccessToken().substring(0, 20) + "...");
 
-        // ---- GEMINI (uses VertexAiGeminiChatModel – now compiles) ----
-        var model = VertexAiGeminiChatModel.builder()  // Fixed class
-                .project("YOUR_PROJECT_ID_HERE")   // ← put your real project ID
-                .location("us-central1")
-                .modelName("gemini-1.5-pro-002")
-                .temperature(0.3)
+        Gmail service = new Gmail.Builder(HTTP_TRANSPORT, GsonFactory.getDefaultInstance(), credential)
+                .setApplicationName(APPLICATION_NAME)
                 .build();
 
-        var assistant = AiServices.builder(LifeSupport.class)
-                .chatLanguageModel(model)
-                .chatMemory(MessageWindowChatMemory.withMaxMessages(30))
-                .tools(new Tools())
-                .build();
+        // BUILD FRESH AGENT WITH GMAIL SERVICE (no chaining on withGmail)
+        BaseAgent rootAgent = createGmailAgent(service);
 
-        System.out.println("\nGmail Life Support READY! Type: rescue my gmail");
-        Scanner sc = new Scanner(System.in);
-        while (true) {
-            String input = sc.nextLine();
-            if (input.equalsIgnoreCase("exit")) break;
-            String response = assistant.help(input);
-            System.out.println("\nLifeSupport: " + response + "\n");
-        }
+        // Start the ADK Dev UI
+        AdkWebServer.start(rootAgent);
+        System.out.println("Gmail Life Support is running at http://localhost:8080");
+        System.out.println("Try: 'Clean my inbox' or 'Tell me my life story from Gmail'");
+
+        // Keep app alive
+        Thread.currentThread().join();
     }
 
-    private static Credential getCredentials(final NetHttpTransport HTTP_TRANSPORT) throws Exception {
-        var in = GmailLifeSupportApp.class.getResourceAsStream("/credentials.json");
-        var clientSecrets = GoogleClientSecrets.load(JSON_FACTORY, new InputStreamReader(in));
+    // FRESH BUILD — Inject Gmail directly, no static mutation
+    public static BaseAgent createGmailAgent(Gmail gmail) {
+        UnsubscriberBot tools = new UnsubscriberBot(gmail);
 
-        var flow = new GoogleAuthorizationCodeFlow.Builder(
-                HTTP_TRANSPORT, JSON_FACTORY, clientSecrets, SCOPES)
-                .setDataStoreFactory(new FileDataStoreFactory(new File(TOKENS_DIRECTORY_PATH)))
+        // 1. Build your sub-agents
+        LlmAgent analyzer = LlmAgent.builder()
+                .name("analyzer")
+                .model("gemini-2.5-flash")
+                .instruction("You analyze unread promotional emails. If the user asks about cleaning inbox, spam, or unread emails → use analyzeEmailBatch. Otherwise, pass to next agent.")
+                .tools(List.of(FunctionTool.create(tools, "analyzeEmailBatch")))
+                .build();
+
+        LlmAgent decider = LlmAgent.builder()
+                .name("decider")
+                .model("gemini-2.5-flash")
+                .instruction("You decide trash/archive/keep for emails. If user asks about cleaning or organizing → decide actions. Otherwise, pass to next agent.")
+                .build();
+
+        LlmAgent actor = LlmAgent.builder()
+                .name("actor")
+                .model("gemini-2.5-flash")
+                .instruction("You execute trashEmail and archiveEmail. If user asks about cleaning or organizing → execute actions. Otherwise, pass to next agent.")
+                .tools(List.of(
+                        FunctionTool.create(tools, "trashEmail"),
+                        FunctionTool.create(tools, "archiveEmail")
+                ))
+                .build();
+
+        LlmAgent lifeStory = LlmAgent.builder()
+                .name("lifeStory")
+                .model("gemini-2.5-flash")
+                .instruction("""
+                You are a biographer. If user asks about "life story", "timeline", "biggest moments", "my journey", "personal history", "what my emails say about me" → 
+                use searchEmails with queries like "wedding", "baby", "graduation", "job change", "travel", "breakup".
+                Then use getEmail to read important messages and write a beautiful, emotional narrative.
+                Otherwise, pass to previous agents.
+                """)
+                .tools(List.of(
+                        FunctionTool.create(tools, "searchEmails"),
+                        FunctionTool.create(tools, "getEmail"),
+                        FunctionTool.create(tools, "getThread")
+                ))
+                .build();
+
+        // 2. ROOT AGENT with routing instructions (Java ADK way)
+        LlmAgent router = LlmAgent.builder()
+                .name("Gmail Life Support")
+                .model("gemini-2.5-flash")
+                .instruction("""
+    You are a deeply emotional biographer with full access to my Gmail.
+    Use searchEmails("wedding"), searchEmails("baby"), etc.
+    The tool returns a JSON array — parse it.
+    Use getEmail(id) on the most important ones — it returns JSON string.
+    Write a beautiful, chronological life story from the emails.
+    """)
+                .subAgents(List.of(analyzer, decider, actor, lifeStory))
+                .build();
+
+        return router;
+    }
+
+    private static Credential getCredentials(final NetHttpTransport transport) throws Exception {
+        GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(
+                GsonFactory.getDefaultInstance(),
+                new InputStreamReader(GmailSupportApp.class.getResourceAsStream(CREDENTIALS_FILE_PATH)));
+
+        GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
+                transport, GsonFactory.getDefaultInstance(), clientSecrets,
+                Collections.singleton(GmailScopes.MAIL_GOOGLE_COM))
+                .setDataStoreFactory(new FileDataStoreFactory(new java.io.File("tokens")))
                 .setAccessType("offline")
                 .build();
 
