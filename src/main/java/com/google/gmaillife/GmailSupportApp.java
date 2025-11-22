@@ -25,9 +25,9 @@ public class GmailLifeSupportApp {
 
     private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
     private static final List<String> SCOPES = List.of(
-            "https://www.googleapis.com/auth/gmail.modify",
-            "https://www.googleapis.com/auth/gmail.labels"
-    );
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.labels"
+);
     private static final String TOKENS_DIRECTORY_PATH = "tokens";
 
     interface LifeSupport {
