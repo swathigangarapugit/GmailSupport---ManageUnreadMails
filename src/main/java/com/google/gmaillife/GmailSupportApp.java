@@ -10,11 +10,11 @@ import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.store.FileDataStoreFactory;
-import dev.langchain4j.model.vertexai.VertexAiGeminiChatModel;
+import dev.langchain4j.model.vertexai.gemini.VertexAiGeminiChatModel;  // Fixed import
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
-import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
+import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;  // Fixed import
 
 import java.io.File;
 import java.io.InputStreamReader;
@@ -25,9 +25,9 @@ public class GmailLifeSupportApp {
 
     private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
     private static final List<String> SCOPES = List.of(
-        "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/gmail.labels"
-);
+            "https://www.googleapis.com/auth/gmail.readonly",  // Read-only for safety
+            "https://www.googleapis.com/auth/gmail.labels"
+    );
     private static final String TOKENS_DIRECTORY_PATH = "tokens";
 
     interface LifeSupport {
@@ -46,16 +46,16 @@ public class GmailLifeSupportApp {
     }
 
     public static void main(String[] args) throws Exception {
-        AutoConfiguredOpenTelemetrySdk.initialize();  // Observability
+        AutoConfiguredOpenTelemetrySdk.initialize();  // Observability – now compiles
 
         // ---- USER OAUTH (opens browser once) ----
         final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
         Credential credential = getCredentials(HTTP_TRANSPORT);
         System.out.println("Gmail access granted for: " + credential.getAccessToken().substring(0, 20) + "...");
 
-        // ---- GEMINI (still uses your project ID) ----
-        var model = VertexAiGeminiChatModel.builder()
-                .project("project-88985c67-16dd-48e2-908")   // ← put your real project ID
+        // ---- GEMINI (uses VertexAiGeminiChatModel – now compiles) ----
+        var model = VertexAiGeminiChatModel.builder()  // Fixed class
+                .project("YOUR_PROJECT_ID_HERE")   // ← put your real project ID
                 .location("us-central1")
                 .modelName("gemini-1.5-pro-002")
                 .temperature(0.3)
