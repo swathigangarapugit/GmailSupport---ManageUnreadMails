@@ -3,169 +3,270 @@ package com.google.gmaillife;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.adk.tools.Annotations.Schema;
-import com.google.adk.tools.FunctionTool;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.*;
 import com.google.api.services.gmail.model.Thread;
-import com.google.gmaillife.model.EmailFull;
-import com.google.gmaillife.model.EmailSummary;
 
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public class UnsubscriberBot {
+
     private final Gmail gmail;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public UnsubscriberBot(Gmail gmail) {
         this.gmail = gmail;
     }
 
-    // Your existing methods (add @Schema to fix schema generation)
-    @Schema(name = "analyzeEmailBatch", description = "Analyze batch of unread promotional emails")
-    public List<EmailAction> analyzeEmailBatch(@Schema(description = "Max results to fetch, default 50") Long maxResults) throws Exception {
-        if (maxResults == null) maxResults = 50L;
+    @Schema(name = "analyzeEmailBatch", description = "Analyze unread promotional emails")
+    public Map<String, Object> analyzeEmailBatch() throws Exception {
+
+        // Query promotional emails (remove size filter)
         ListMessagesResponse response = gmail.users().messages()
                 .list("me")
-                .setQ("is:unread category:promotions larger:1M")
-                .setMaxResults(maxResults)
+                .setQ("category:promotions is:unread")
                 .execute();
 
-        List<EmailAction> results = new ArrayList<>();
-        if (response.getMessages() == null) return results;
+        List<Map<String,Object>> arr = new ArrayList<>();
 
-        for (Message msg : response.getMessages()) {
-            Message full = gmail.users().messages().get("me", msg.getId())
-                    .setFormat("metadata")
-                    .execute();
-
-            String subject = getHeader(full, "Subject");
-            String snippet = full.getSnippet() != null ? full.getSnippet() : "";
-            results.add(new EmailAction(msg.getId(), subject, snippet));
-        }
-        return results;
-    }
-
-    @Schema(name = "trashEmail", description = "Trash an email by ID")
-    public String trashEmail(@Schema(description = "Message ID to trash") String messageId) throws Exception {
-        if (messageId == null) throw new IllegalArgumentException("messageId required");
-        gmail.users().messages().trash("me", messageId).execute();
-        return "Trashed email: " + messageId;
-    }
-
-    @Schema(name = "archiveEmail", description = "Archive an email by ID")
-    public String archiveEmail(@Schema(description = "Message ID to archive") String messageId) throws Exception {
-        if (messageId == null) throw new IllegalArgumentException("messageId required");
-        ModifyMessageRequest req = new ModifyMessageRequest().setRemoveLabelIds(List.of("INBOX"));
-        gmail.users().messages().modify("me", messageId, req).execute();
-        return "Archived email: " + messageId;
-    }
-
-
-
-    // Add this once in your class
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
-    @Schema(name = "searchEmails", description = "Search emails. Returns JSON array of email summaries.")
-    public String searchEmails(
-            @Schema(description = "Gmail search query") String query,
-            @Schema(description = "Max results") Integer maxResults) throws Exception {
-
-        if (query == null || query.isBlank()) query = "from:me";
-        if (maxResults == null || maxResults <= 0) maxResults = 50;
-
-        var response = gmail.users().messages().list("me")
-                .setQ(query)
-                .setMaxResults(maxResults.longValue())
-                .execute();
-
-        List<Map<String, Object>> emails = new ArrayList<>();
         if (response.getMessages() != null) {
-            for (var m : response.getMessages()) {
-                var full = gmail.users().messages().get("me", m.getId())
+            for (Message msg : response.getMessages()) {
+                Message full = gmail.users().messages()
+                        .get("me", msg.getId())
                         .setFormat("metadata")
                         .execute();
 
-                Map<String, Object> email = new LinkedHashMap<>();
+                Map<String,Object> item = new LinkedHashMap<>();
+                item.put("id", msg.getId());
+                item.put("subject", getHeader(full, "Subject"));
+                item.put("snippet", full.getSnippet());
+                arr.add(item);
+            }
+        }
+
+        // Return as Map (same as searchEmails)
+        return Map.of("items", arr);
+    }
+
+
+    @Schema(name = "trashEmail", description = "Trash an email by ID")
+    public Map<String,Object> trashEmail(
+            @Schema(name = "messageId", description = "ID of the email to trash")
+            String messageId
+    ) throws Exception {
+
+        gmail.users().messages().trash("me", messageId).execute();
+
+        return Map.of(
+                "status", "ok",
+                "id", messageId
+        );
+    }
+
+    @Schema(name = "markAsRead", description = "Mark an email as read")
+    public Map<String,Object> markAsRead(
+            @Schema(name = "messageId") String messageId
+    ) throws Exception {
+
+        ModifyMessageRequest mods = new ModifyMessageRequest()
+                .setRemoveLabelIds(List.of("UNREAD"));
+
+        gmail.users().messages().modify("me", messageId, mods).execute();
+
+        return Map.of(
+                "status", "ok",
+                "id", messageId
+        );
+    }
+
+
+    @Schema(name = "archiveEmail", description = "Archive an email by ID")
+    public Map<String, Object> archiveEmail(
+            @Schema(description = "ID of the email to archive") String id
+    ) throws Exception {
+
+        ModifyMessageRequest req = new ModifyMessageRequest()
+                .setRemoveLabelIds(List.of("INBOX"));
+
+        gmail.users().messages().modify("me", id, req).execute();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "ok");
+        result.put("id", id);
+
+        return result;
+    }
+
+
+
+    @Schema(name = "searchEmails", description = "Search emails")
+    public Map<String, Object> searchEmails(
+            @Schema(description = "Gmail search query") String query
+    ) throws Exception {
+
+        if (query == null || query.isBlank()) {
+            query = "from:me";
+        }
+
+        long maxResults = 50; // default internally
+
+        var response = gmail.users().messages().list("me")
+                .setQ(query)
+                .setMaxResults(maxResults)
+                .execute();
+
+        List<Map<String,Object>> arr = new ArrayList<>();
+
+        if (response.getMessages() != null) {
+            for (var m : response.getMessages()) {
+                var full = gmail.users().messages()
+                        .get("me", m.getId())
+                        .setFormat("metadata")
+                        .execute();
+
+                Map<String,Object> email = new LinkedHashMap<>();
                 email.put("id", m.getId());
                 email.put("subject", getHeader(full, "Subject"));
                 email.put("from", getHeader(full, "From"));
                 email.put("date", getHeader(full, "Date"));
-                email.put("snippet", full.getSnippet() != null ? full.getSnippet() : "");
-                emails.add(email);
+                email.put("snippet", full.getSnippet());
+
+                arr.add(email);
             }
         }
 
-        // This is the ONLY thing ADK 0.3.0 accepts without crashing
-        try {
-            return MAPPER.writeValueAsString(emails);
-        } catch (JsonProcessingException e) {
-            return "[]";
-        }
+        return Map.of("items", arr);
     }
 
-    @Schema(name = "getEmail", description = "Get full email by ID. Returns JSON string.")
-    public String getEmail(@Schema(description = "Message ID") String messageId) throws Exception {
-        if (messageId == null) throw new IllegalArgumentException("messageId required");
 
-        var message = gmail.users().messages().get("me", messageId).execute();
 
-        String body = "";
-        if (message.getPayload() != null && message.getPayload().getParts() != null) {
-            for (var part : message.getPayload().getParts()) {
-                if ("text/plain".equals(part.getMimeType()) && part.getBody() != null && part.getBody().getData() != null) {
-                    body = new String(Base64.getUrlDecoder().decode(part.getBody().getData()));
-                    break;
-                }
-            }
-        }
+    @Schema(name = "getEmail", description = "Get full email")
+    public String getEmail(String messageId) throws Exception {
 
-        Map<String, Object> result = new LinkedHashMap<>();
+        Message message = gmail.users().messages().get("me", messageId).execute();
+
+        String body = extractBody(message);
+
+        Map<String,Object> result = new LinkedHashMap<>();
         result.put("id", message.getId());
-        result.put("subject", getHeader(message, "Subject"));
-        result.put("from", getHeader(message, "From"));
-        result.put("date", getHeader(message, "Date"));
+        result.put("subject", getHeader(message,"Subject"));
+        result.put("from", getHeader(message,"From"));
+        result.put("date", getHeader(message,"Date"));
+        result.put("snippet", message.getSnippet());
         result.put("body", body);
-        result.put("snippet", message.getSnippet() != null ? message.getSnippet() : "");
 
-        try {
-            return MAPPER.writeValueAsString(result);
-        } catch (JsonProcessingException e) {
-            return "{}";
-        }
+        return MAPPER.writeValueAsString(result);
     }
 
-    @Schema(name = "getThread", description = "Get thread by ID. Returns JSON array.")
-    public String getThread(@Schema(description = "Thread ID") String threadId) throws Exception {
-        if (threadId == null) return "[]";
 
-        var thread = gmail.users().threads().get("me", threadId).execute();
-        List<String> messages = new ArrayList<>();
-        for (var msg : thread.getMessages()) {
-            messages.add(getEmail(msg.getId()));  // getEmail already returns JSON string
+    @Schema(name = "getThread", description = "Get thread")
+    public String getThread(String threadId) throws Exception {
+
+        Thread thread = gmail.users().threads().get("me", threadId).execute();
+        List<Map<String,Object>> messages = new ArrayList<>();
+
+        for (Message msg : thread.getMessages()) {
+
+            Map<String,Object> one = new LinkedHashMap<>();
+            one.put("id", msg.getId());
+            one.put("subject", getHeader(msg,"Subject"));
+            one.put("from", getHeader(msg,"From"));
+            one.put("date", getHeader(msg,"Date"));
+            one.put("snippet", msg.getSnippet());
+            one.put("body", extractBody(msg));
+
+            messages.add(one);
         }
 
-        try {
-            return MAPPER.writeValueAsString(messages);
-        } catch (JsonProcessingException e) {
-            return "[]";
-        }
+        return MAPPER.writeValueAsString(Map.of("items", messages));
     }
 
-    // Helper (add if missing)
+
     private String getHeader(Message message, String name) {
+        if (message.getPayload() == null) return "";
         List<MessagePartHeader> headers = message.getPayload().getHeaders();
         if (headers == null) return "";
         return headers.stream()
-                .filter(h -> name.equals(h.getName()))
+                .filter(h -> name.equalsIgnoreCase(h.getName()))
                 .map(MessagePartHeader::getValue)
                 .findFirst()
                 .orElse("");
     }
 
-    // Your existing EmailAction class
-    public static class EmailAction {
-        public String id, subject, snippet;
-        public EmailAction(String id, String subject, String snippet) {
-            this.id = id; this.subject = subject; this.snippet = snippet;
+    private String extractBody(Message message) {
+        try {
+            return extractParts(message.getPayload());
+        } catch (Exception e) {
+            return "";
         }
     }
+
+    private String extractParts(MessagePart part) throws Exception {
+        if (part == null) return "";
+
+        // If body exists
+        if (part.getBody() != null && part.getBody().getData() != null) {
+            byte[] data = Base64.getUrlDecoder().decode(part.getBody().getData());
+            return new String(data);
+        }
+
+        // If multipart
+        if (part.getParts() != null) {
+            StringBuilder sb = new StringBuilder();
+            for (MessagePart p : part.getParts()) {
+                sb.append(extractParts(p));
+            }
+            return sb.toString();
+        }
+
+        return "";
+    }
+
+    @Schema(name = "unsubscribeEmail", description = "Unsubscribe user from a mailing list using message ID")
+    public Map<String, Object> unsubscribeEmail(
+            @Schema(description = "Gmail message ID") String messageId
+    ) throws Exception {
+
+        // 1. Load message
+        Message msg = gmail.users().messages()
+                .get("me", messageId)
+                .setFormat("full")
+                .execute();
+
+        // 2. Look for the List-Unsubscribe header
+        String header = getHeader(msg, "List-Unsubscribe");
+        if (header == null || header.isBlank()) {
+            return Map.of(
+                    "status", "error",
+                    "reason", "no-unsubscribe-link"
+            );
+        }
+
+        // 3. Parse <mailto:> or <http:> link
+        Matcher m = Pattern.compile("<([^>]+)>").matcher(header);
+        if (!m.find()) {
+            return Map.of("status","error","reason","invalid-header");
+        }
+
+        String link = m.group(1);
+
+        // 4. Follow link (only http/https supported here)
+        if (link.startsWith("http")) {
+            HttpURLConnection conn = (HttpURLConnection) new URL(link).openConnection();
+            conn.setRequestMethod("GET");
+            conn.getResponseCode();
+        }
+
+        return Map.of("status", "ok", "id", messageId, "action", "unsubscribed");
+    }
+
+
+
+
 }

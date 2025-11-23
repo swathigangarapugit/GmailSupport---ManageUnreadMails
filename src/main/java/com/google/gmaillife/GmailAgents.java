@@ -8,45 +8,9 @@ import java.util.List;
 
 public class GmailAgents {
 
-    // This is the only agent the Dev UI sees
-    public static final BaseAgent ROOT_AGENT = createRootAgent();
-
-    private static BaseAgent createRootAgent() {
-        // Create tool instance — Gmail will be injected later via runner
-        UnsubscriberBot tools = new UnsubscriberBot(null);
-
-        LlmAgent analyzer = LlmAgent.builder()
-                .name("analyzer")
-                .model("gemini-2.5-flash")
-                .instruction("You are an email analyst. Use analyze_email_batch to find unread promotional emails.")
-                .tools(List.of(
-                        FunctionTool.create(tools, "analyzeEmailBatch")
-                ))
-                .build();
-
-        LlmAgent decider = LlmAgent.builder()
-                .name("decider")
-                .model("gemini-2.5-flash")
-                .instruction("For each email, decide: trash, archive, or keep. Output JSON.")
-                .build();
-
-        LlmAgent actor = LlmAgent.builder()
-                .name("actor")
-                .model("gemini-2.5-flash")
-                .instruction("Execute the decided actions using trash_email or archive_email tools.")
-                .tools(List.of(
-                        FunctionTool.create(tools, "trashEmail"),
-                        FunctionTool.create(tools, "archiveEmail")
-                ))
-                .build();
-
-        return SequentialAgent.builder()
-                .name("Gmail Life Support")
-                .subAgents(List.of(analyzer, decider, actor,
-                        LifeStoryAgent.createAgent(),    // NEW
-                        FilterGenie.createAgent()))
-
-                .build();
+    Gmail gmail;
+    public GmailAgents(Gmail gmail) {
+        this.gmail = gmail;
     }
 
     // Helper to inject Gmail at runtime (used in main)
@@ -57,20 +21,39 @@ public class GmailAgents {
         LlmAgent analyzer = LlmAgent.builder()
                 .name("analyzer")
                 .model("gemini-2.5-flash")
-                .instruction("You are an email analyst. Use analyzeEmailBatch to find unread promotional emails.")
+                .instruction("""
+You analyze unread promotional emails.
+Call the tool analyzeEmailBatch when cleaning or finding unread/promo emails.
+""")
                 .tools(List.of(FunctionTool.create(tools, "analyzeEmailBatch")))
                 .build();
 
         LlmAgent decider = LlmAgent.builder()
                 .name("decider")
                 .model("gemini-2.5-flash")
-                .instruction("For each email, decide: trash, archive, or keep. Output JSON.")
+                .instruction("""
+                Input: JSON array of emails from analyzer.
+
+                Output: JSON array:
+                [
+                  {"id":"123", "action":"trash"},
+                  {"id":"456", "action":"archive"}
+                ]
+                """)
                 .build();
 
         LlmAgent actor = LlmAgent.builder()
                 .name("actor")
                 .model("gemini-2.5-flash")
-                .instruction("Execute the decided actions using trashEmail or archiveEmail tools.")
+                .instruction("""
+                You execute email cleanup actions.
+
+                For each entry:
+                - If action == "trash": call trashEmail(id)
+                - If action == "archive": call archiveEmail(id)
+
+                Always call the proper tool.
+                """)
                 .tools(List.of(
                         FunctionTool.create(tools, "trashEmail"),
                         FunctionTool.create(tools, "archiveEmail")
@@ -80,13 +63,59 @@ public class GmailAgents {
         LlmAgent lifeStory = LlmAgent.builder()
                 .name("lifeStory")
                 .model("gemini-2.5-flash")
-                .instruction("... your instruction ...")
+                .instruction("""
+                You write life stories using emails.
+                ALWAYS call searchEmails, getEmail, or getThread.
+                """)
                 .tools(List.of(
-                FunctionTool.create(tools, "searchEmails"),
-                FunctionTool.create(tools, "getEmail"),
-                FunctionTool.create(tools, "getThread")
-        ))
+                        FunctionTool.create(tools, "searchEmails"),
+                        FunctionTool.create(tools, "getEmail"),
+                        FunctionTool.create(tools, "getThread")
+                ))
                 .build();
+
+        LlmAgent scanInbox = LlmAgent.builder()
+                .name("scanInbox")
+                .model("gemini-2.5-flash")
+                .instruction("""
+                        You are scanning your mail box now.
+                        Use scanMailbox.
+                        Call tools when needed.
+                """)
+                .tools(List.of(
+                        FunctionTool.create(tools, "searchEmails"),
+                        FunctionTool.create(tools, "getEmail"),
+                        FunctionTool.create(tools, "scanMailbox")
+                ))
+                .build();
+
+        LlmAgent unSubscribe = LlmAgent.builder()
+                .name("unSubscribe")
+                .model("gemini-2.5-flash")
+                .instruction("""
+You help users unsubscribe from emails.
+
+Workflow:
+1. If the user says "unsubscribe from ___", FIRST call searchEmails
+   with a query that finds that sender.
+
+2. Once you have a messageId, call unsubscribeEmail.
+
+Rules:
+- NEVER call unsubscribeEmail without a valid messageId.
+- NEVER call tools repeatedly in loops.
+- After unsubscribeEmail returns, respond normally.
+""")
+                .tools(List.of(
+                        FunctionTool.create(tools, "searchEmails"),
+                        FunctionTool.create(tools, "unsubscribeEmail")
+                ))
+                .build();
+
+
+
+
+
 
         return SequentialAgent.builder()
                 .name("Gmail Life Support")
@@ -94,9 +123,13 @@ public class GmailAgents {
                         analyzer,
                         decider,
                         actor,
-                        LifeStoryAgent.createAgent(),     // your custom agent
-                        FilterGenie.createAgent()        // your custom agent
+                       lifeStory,
+                        scanInbox,
+                        unSubscribe,
+                        FilterGenie.createAgent(gmail)
                 ))
                 .build();
     }
+
+
 }

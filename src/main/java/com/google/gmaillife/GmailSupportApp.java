@@ -54,20 +54,25 @@ public class GmailSupportApp {
         LlmAgent analyzer = LlmAgent.builder()
                 .name("analyzer")
                 .model("gemini-2.5-flash")
-                .instruction("You analyze unread promotional emails. If the user asks about cleaning inbox, spam, or unread emails → use analyzeEmailBatch. Otherwise, pass to next agent.")
+                .instruction("""
+You analyze unread promotional emails.
+Call the tool analyzeEmailBatch when cleaning or finding unread/promo emails.
+""")
                 .tools(List.of(FunctionTool.create(tools, "analyzeEmailBatch")))
                 .build();
 
         LlmAgent decider = LlmAgent.builder()
                 .name("decider")
                 .model("gemini-2.5-flash")
-                .instruction("You decide trash/archive/keep for emails. If user asks about cleaning or organizing → decide actions. Otherwise, pass to next agent.")
+                .instruction("""
+                        You decide trash/archive/keep for emails. If user asks about cleaning or organizing → decide actions. Otherwise, pass to next agent.""")
                 .build();
 
         LlmAgent actor = LlmAgent.builder()
                 .name("actor")
                 .model("gemini-2.5-flash")
-                .instruction("You execute trashEmail and archiveEmail. If user asks about cleaning or organizing → execute actions. Otherwise, pass to next agent.")
+                .instruction("""
+                You execute trashEmail and archiveEmail. If user asks about cleaning or organizing → execute actions. Otherwise, pass to next agent.""")
                 .tools(List.of(
                         FunctionTool.create(tools, "trashEmail"),
                         FunctionTool.create(tools, "archiveEmail")
@@ -78,11 +83,10 @@ public class GmailSupportApp {
                 .name("lifeStory")
                 .model("gemini-2.5-flash")
                 .instruction("""
-                You are a biographer. If user asks about "life story", "timeline", "biggest moments", "my journey", "personal history", "what my emails say about me" → 
-                use searchEmails with queries like "wedding", "baby", "graduation", "job change", "travel", "breakup".
-                Then use getEmail to read important messages and write a beautiful, emotional narrative.
-                Otherwise, pass to previous agents.
-                """)
+You are a biographer. If user asks about "life story", "timeline", 
+"biggest moments", "my journey", "personal history", "what my emails say about me" →
+use searchEmails...
+""")
                 .tools(List.of(
                         FunctionTool.create(tools, "searchEmails"),
                         FunctionTool.create(tools, "getEmail"),
@@ -95,12 +99,17 @@ public class GmailSupportApp {
                 .name("Gmail Life Support")
                 .model("gemini-2.5-flash")
                 .instruction("""
-    You are a deeply emotional biographer with full access to my Gmail.
-    Use searchEmails("wedding"), searchEmails("baby"), etc.
-    The tool returns a JSON array — parse it.
-    Use getEmail(id) on the most important ones — it returns JSON string.
-    Write a beautiful, chronological life story from the emails.
-    """)
+                        You are a router agent.
+                                                
+                        If user asks about cleaning inbox, spam, organizing, unread →
+                        route to "analyzer".
+                                                
+                        If user asks about life story or memories →
+                        route to "lifeStory".
+                                                
+                        Otherwise ask clarifying questions.
+                                              
+                        """)
                 .subAgents(List.of(analyzer, decider, actor, lifeStory))
                 .build();
 
@@ -114,7 +123,7 @@ public class GmailSupportApp {
 
         GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
                 transport, GsonFactory.getDefaultInstance(), clientSecrets,
-                Collections.singleton(GmailScopes.MAIL_GOOGLE_COM))
+                Collections.singleton(GmailScopes.GMAIL_MODIFY))
                 .setDataStoreFactory(new FileDataStoreFactory(new java.io.File("tokens")))
                 .setAccessType("offline")
                 .build();

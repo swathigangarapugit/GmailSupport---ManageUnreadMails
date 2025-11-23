@@ -4,6 +4,7 @@ package com.google.gmaillife;
 import com.google.adk.agents.LlmAgent;
 import com.google.adk.agents.BaseAgent;
 import com.google.adk.tools.FunctionTool;
+import com.google.api.services.gmail.Gmail;
 
 import java.util.Map;
 
@@ -19,7 +20,7 @@ public class FilterGenie {
         );
     }
 
-    public static BaseAgent createAgent() {
+    public static BaseAgent createAgent(Gmail gmail) {
         return LlmAgent.builder()
                 .name("Filter Genie")
                 .model("gemini-2.5-flash")
