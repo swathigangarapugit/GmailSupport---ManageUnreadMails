@@ -41,23 +41,58 @@
             <groupId>com.google.oauth-client</groupId>
             <artifactId>google-oauth-client-java6</artifactId>
             <version>1.34.1</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>javax.activation</groupId>
+                    <artifactId>activation</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>javax.mail</groupId>
+                    <artifactId>mail</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
+
         <dependency>
             <groupId>com.google.oauth-client</groupId>
             <artifactId>google-oauth-client-jetty</artifactId>
             <version>1.34.1</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>javax.activation</groupId>
+                    <artifactId>activation</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>javax.mail</groupId>
+                    <artifactId>mail</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
+
 
         <!-- Google ADK (Agent Development Kit) -->
         <dependency>
             <groupId>com.google.adk</groupId>
-            <artifactId>google-adk</artifactId>
+            <artifactId>google-adk-dev</artifactId>
             <version>0.3.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.sun.activation</groupId>
+                    <artifactId>jakarta.activation</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
+
         <dependency>
             <groupId>com.google.adk</groupId>
             <artifactId>google-adk-dev</artifactId>
             <version>0.3.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.sun.activation</groupId>
+                    <artifactId>jakarta.activation</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Gemini -->
@@ -103,6 +138,26 @@
             <artifactId>proto-google-cloud-aiplatform-v1beta1</artifactId>
             <version>0.52.0</version>
         </dependency>
+
+
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.16.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.angus</groupId>
+            <artifactId>angus-mail</artifactId>
+            <version>1.1.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.eclipse.angus</groupId>
+            <artifactId>angus-activation</artifactId>
+            <version>1.1.0</version>
+        </dependency>
+
+
     </dependencies>
     <repositories>
         <repository>

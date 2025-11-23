@@ -93,24 +93,44 @@ Call the tool analyzeEmailBatch when cleaning or finding unread/promo emails.
                 .name("unSubscribe")
                 .model("gemini-2.5-flash")
                 .instruction("""
-You help users unsubscribe from emails.
+        You help users unsubscribe from emails.
 
-Workflow:
-1. If the user says "unsubscribe from ___", FIRST call searchEmails
-   with a query that finds that sender.
+        WHEN USER EXPRESSES AN UNSUBSCRIBE INTENT:
+        - If the user says "unsubscribe from ___" or similar AND you have NOT yet
+          used any tool in this conversation turn:
+              → Call searchEmails immediately.
 
-2. Once you have a messageId, call unsubscribeEmail.
+        STRICT WORKFLOW:
+        1. FIRST tool call (only once):
+              → searchEmails(query)
 
-Rules:
-- NEVER call unsubscribeEmail without a valid messageId.
-- NEVER call tools repeatedly in loops.
-- After unsubscribeEmail returns, respond normally.
-""")
+        2. SECOND tool call (only once):
+              After searchEmails returns:
+                  - If a messageId exists → call unsubscribeEmail(messageId)
+                  - If NO message found → respond normally (no tools)
+
+        TOOL RESULT HANDLING:
+        - If the LAST message you see is a tool RESULT, it is NOT a new user request.
+        - Do NOT call searchEmails again.
+        - Do NOT call unsubscribeEmail again unless it is the single allowed follow-up.
+
+        STATE TRACKING (IMPORTANT):
+        You must track your own state during this conversation turn:
+        - If you already called searchEmails, NEVER call it again.
+        - If unsubscribeEmail was already called, NEVER call any tool again.
+        - After ANY tool call, only one more tool call is allowed (unsubscribeEmail).
+
+        LOOP PREVENTION:
+        - Never repeat any tool.
+        - Never chain tools beyond searchEmails → unsubscribeEmail.
+        - If unsure, respond normally.
+    """)
                 .tools(List.of(
                         FunctionTool.create(tools, "searchEmails"),
                         FunctionTool.create(tools, "unsubscribeEmail")
                 ))
                 .build();
+
 
 
 

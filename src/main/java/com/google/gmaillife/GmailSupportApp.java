@@ -94,12 +94,37 @@ use searchEmails...
                 ))
                 .build();
 
+        LlmAgent unSubscribe = LlmAgent.builder()
+                .name("unSubscribe")
+                .model("gemini-2.5-flash")
+                .instruction("""
+                You help users unsubscribe from emails.
+
+                When user says "unsubscribe from ___":
+                    1. Call searchEmails immediately.
+                    2. When searchEmails returns a messageId:
+                         → call unsubscribeEmail.
+                    3. If no message found:
+                         → respond normally.
+
+                No retries. No loops. No repeating tools.
+        """)
+                .tools(List.of(
+                        FunctionTool.create(tools, "searchEmails"),
+                        FunctionTool.create(tools, "unsubscribeEmail")
+                ))
+                .build();
+
         // 2. ROOT AGENT with routing instructions (Java ADK way)
         LlmAgent router = LlmAgent.builder()
                 .name("Gmail Life Support")
                 .model("gemini-2.5-flash")
                 .instruction("""
                         You are a router agent.
+                        
+                        If the user asks to unsubscribe from anything (e.g. “unsubscribe”,\s
+                                        “stop emails”, “remove me from mailing list”, “cancel newsletter”):
+                                            → route to "unSubscribe".
                                                 
                         If user asks about cleaning inbox, spam, organizing, unread →
                         route to "analyzer".
@@ -110,7 +135,7 @@ use searchEmails...
                         Otherwise ask clarifying questions.
                                               
                         """)
-                .subAgents(List.of(analyzer, decider, actor, lifeStory))
+                .subAgents(List.of(unSubscribe,   analyzer, decider, actor, lifeStory))
                 .build();
 
         return router;
